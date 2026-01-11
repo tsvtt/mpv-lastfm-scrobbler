@@ -100,7 +100,7 @@ function str_to_md5(str)
         {
             'sh',
             '-c',
-            'echo -n ' .. str .. ' | md5sum | tr -d -',
+            'echo -n "' .. str.gsub(str:gsub('"', '\\"'), '%$', '\\%$') .. '" | md5sum | tr -d -',
         }
     ).stdout
 end
