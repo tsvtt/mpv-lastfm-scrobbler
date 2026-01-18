@@ -9,11 +9,13 @@ SCR_URL = 'http://ws.audioscrobbler.com/2.0/?format=json'
 S = '1c62855d245db87aa72d97e04628dfa2'
 K = '7c58d2ae379ba37916c438c88455ec03'
 URL_K = SCR_URL .. '&api_key=' .. K
+SCRIPTS_DIR = mp.find_config_file('scripts')
 CONF_FILENAME = '.lastfm_scr.conf'
-CONF_FILEPATH = mp.find_config_file('scripts') .. '/'  .. CONF_FILENAME
+CONF_FILEPATH = SCRIPTS_DIR .. '/'  .. CONF_FILENAME
 local SCR_SEC = 90
 local JSON_VALUE_RE = '":%s?"([^"]+)'
 local uname, sk, timer
+local is_paused = false
 
 API_METHODS = {
     getSession = 'auth.getSession',
@@ -100,6 +102,7 @@ function str_to_md5(str)
         {
             'sh',
             '-c',
+            -- todo: replace "\"
             'echo -n "' .. str.gsub(str:gsub('"', '\\"'), '%$', '\\%$') .. '" | md5sum | tr -d -',
         }
     ).stdout
@@ -149,6 +152,17 @@ function table_to_urlencoded(table)
     return s:sub(0, s:len() - 1)
 end
 
+function extract_playmetadata()
+    return {
+        artist = mp.get_property("metadata/by-key/artist"),
+        title = mp.get_property("metadata/by-key/title"),
+        album = mp.get_property("metadata/by-key/album"),
+    }
+end
+
+function filename() return mp.get_property('filename') end
+function file_ext() return filename():match('%.(%w+)$') end
+
 function scrobble()
     local md = extract_playmetadata()
     local sig = gen_sig(API_METHODS.scrobble, nil, sk, md.artist, md.title)
@@ -169,27 +183,19 @@ function scrobble()
     curl_post(SCR_URL, table_to_urlencoded(params))
 end
 
-function extract_playmetadata()
-    return {
-        artist = mp.get_property("metadata/by-key/artist"),
-        title = mp.get_property("metadata/by-key/title"),
-        album = mp.get_property("metadata/by-key/album"),
-    }
-end
-
-function filename() return mp.get_property('filename') end
-function file_ext() return filename():match('%.(%w+)$') end
-
 function set_scrobble_timer()
-    if SCR_FORMATS[file_ext()] == nil then
-        logger.debug('Extension "' .. file_ext() .. '" is not set for scrobbling')
-    else
+    if SCR_FORMATS[file_ext()] then
         timer = mp.add_timeout(SCR_SEC, scrobble)
+        if is_paused then
+            timer:stop()
+        end
+    else
+        logger.debug('Extension "' .. file_ext() .. '" is not set for scrobbling')
     end
 end
 
 function clear_timer()
-    if timer and timer:is_enabled() then
+    if timer then
         logger.debug('clearing the timer')
         timer:kill()
     end
@@ -208,10 +214,21 @@ function on_file_ended(ev)
     end
 end
 
+function on_pause(_name, is_paused_ev)
+	if is_paused_ev == true then
+	    is_paused = true
+	    if timer then timer:stop() end
+    else
+	    is_paused = false
+        if timer then timer:resume() end
+    end
+end
+
 function init_mpv_handlers()
     logger.debug('init mpv handlers')
     mp.register_event("file-loaded", on_file_loaded)
     mp.register_event("end-file", on_file_ended)
+    mp.observe_property("pause", "bool", on_pause)
 end
 
 function wait_session_approve(token, sig)

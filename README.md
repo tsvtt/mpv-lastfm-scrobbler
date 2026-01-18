@@ -1,4 +1,4 @@
-# Mpv player plugin for scrobbling music to [last.fm](https://last.fm)
+# [Mpv player](https://mpv.io/) plugin for scrobbling music to [last.fm](https://last.fm)
 
 ### Platforms
 - Linux
