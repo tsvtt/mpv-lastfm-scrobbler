@@ -108,15 +108,20 @@ function str_to_md5(str)
     ).stdout
 end
 
-function gen_sig(method, token, sk, artist, track)
+function gen_sig(method, token, _sk, md)
     local sig = 'api_key' .. K
 
     if method == API_METHODS.getSession then
         sig = sig .. 'method' .. method .. 'token' .. token
     elseif method == API_METHODS.scrobble then
-        sig = sig ..
-            'artist[0]' ..
-            artist .. 'method' .. method .. 'sk' .. sk .. 'timestamp[0]' .. os.time() - SCR_SEC .. 'track[0]' .. track
+        sig =
+            'album[0]' .. md.album ..
+            sig ..
+            'artist[0]' .. md.artist ..
+            'method' .. method ..
+            'sk' .. _sk ..
+            'timestamp[0]' .. os.time() - SCR_SEC ..
+            'track[0]' .. md.title
     else
         logger.error('Incorrect method:', method)
         return
@@ -154,9 +159,9 @@ end
 
 function extract_playmetadata()
     return {
-        artist = mp.get_property("metadata/by-key/artist"),
-        title = mp.get_property("metadata/by-key/title"),
-        album = mp.get_property("metadata/by-key/album"),
+        artist = mp.get_property("metadata/by-key/artist") or '',
+        title = mp.get_property("metadata/by-key/title") or '',
+        album = mp.get_property("metadata/by-key/album") or '',
     }
 end
 
@@ -165,22 +170,27 @@ function file_ext() return filename():match('%.(%w+)$') end
 
 function scrobble()
     local md = extract_playmetadata()
-    local sig = gen_sig(API_METHODS.scrobble, nil, sk, md.artist, md.title)
-    local params = {
-        method = API_METHODS.scrobble,
-        api_key = K,
-        api_sig = sig,
-        sk = sk,
-        ['artist[0]'] = md.artist,
-        ['track[0]'] = md.title,
-        ['timestamp[0]'] = os.time() - SCR_SEC,
-    }
+    local sig = gen_sig(API_METHODS.scrobble, nil, sk, md)
     if empty(sig) or empty(md.artist) or empty(md.title) then
         logger.error("Can't scrobble: empty value among required values:",
             'sig=', sig, ',artist=', md.artist, ',title=', md.title)
         return
     end
-    curl_post(SCR_URL, table_to_urlencoded(params))
+    curl_post(
+        SCR_URL,
+        table_to_urlencoded(
+            {
+                ['album[0]'] = md.album,
+                api_key = K,
+                api_sig = sig,
+                method = API_METHODS.scrobble,
+                sk = sk,
+                ['artist[0]'] = md.artist,
+                ['timestamp[0]'] = os.time() - SCR_SEC,
+                ['track[0]'] = md.title,
+            }
+        )
+    )
 end
 
 function set_scrobble_timer()
