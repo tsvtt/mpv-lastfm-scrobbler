@@ -5,12 +5,14 @@ local SCR_FORMATS = {
     flac = true,
     m4a = true,
 }
+PLUGIN_NAME = 'lastfm_scr'
 SCR_URL = 'http://ws.audioscrobbler.com/2.0/?format=json'
 S = '1c62855d245db87aa72d97e04628dfa2'
 K = '7c58d2ae379ba37916c438c88455ec03'
 URL_K = SCR_URL .. '&api_key=' .. K
 SCRIPTS_DIR = mp.find_config_file('scripts')
-CONF_FILENAME = '.lastfm_scr.conf'
+CONF_FILENAME = '.' .. PLUGIN_NAME .. '.conf'
+TMP_FILEPATH = '/tmp/' .. PLUGIN_NAME .. '.temp'
 CONF_FILEPATH = SCRIPTS_DIR .. '/'  .. CONF_FILENAME
 local SCR_SEC = 90
 local JSON_VALUE_RE = '":%s?"([^"]+)'
@@ -98,14 +100,15 @@ function api_fetch_token()
 end
 
 function str_to_md5(str)
-    return run_subpr_sync(
+    local tmpfile = assert(io.open(TMP_FILEPATH, 'w'))
+    tmpfile:write(str)
+    tmpfile:close()
+    return (run_subpr_sync(
         {
-            'sh',
-            '-c',
-            -- todo: replace "\"
-            'echo -n "' .. str.gsub(str:gsub('"', '\\"'), '%$', '\\%$') .. '" | md5sum | tr -d -',
+            'md5sum',
+            TMP_FILEPATH,
         }
-    ).stdout
+    ).stdout):match('^%S+')
 end
 
 function gen_sig(method, token, _sk, md)
